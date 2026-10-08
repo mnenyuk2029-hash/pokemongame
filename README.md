@@ -4,14 +4,36 @@ A playable browser RPG set in Aurelian, an original region of nine connected lan
 
 ## Play locally
 
-Requires Node.js 24+ and npm.
+1. Install the latest **Node.js 24 LTS** from [nodejs.org](https://nodejs.org/), then reopen your terminal. npm is included.
+2. Download and **extract** the repository ZIP, or clone the repository.
+3. Open a terminal in the game folder (the folder containing `package.json`). On Windows, you can open that folder in File Explorer, type `cmd` in the address bar, and press Enter.
+4. Run:
 
 ```sh
 npm ci
-npm run dev -- --port 5173
+npm start
 ```
 
-Open http://localhost:5173 to enter the full-screen overworld. Click the current objective at the bottom of the screen to walk to Professor Fern and choose your starter. Eevee is already traveling with you. Press **Esc** or tap **Menu / Start** to open the in-game menu; Pokémon, Pokédex, bag, map, journal, saving, options, and controls are all inside it.
+The game opens in your browser at http://localhost:5173. If the browser does not open automatically, visit that address yourself. Keep the terminal open while playing; press Ctrl+C there to stop the game. On later launches, run `npm start` in the same folder; you only need `npm ci` again after downloading an updated version.
+
+**Do not double-click `index.html`** (including the one in `dist`). The game needs its local server to load TypeScript and game assets. No backend account or API key is needed.
+
+Click the current objective at the bottom of the screen to walk to Professor Fern and choose your starter. Eevee is already traveling with you. Press **Esc** or tap **Menu / Start** to open the in-game menu; Pokémon, Pokédex, bag, map, journal, saving, options, and controls are all inside it.
+
+### Startup troubleshooting
+
+| What you see                                 | What to do                                                                                                              |
+| -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `node` or `npm` is not recognized            | Install Node.js 24 LTS and reopen the terminal. Check `node --version` and `npm --version`.                             |
+| PowerShell says `npm.ps1` cannot be loaded   | Use Command Prompt (`cmd`) as described above, or run `npm.cmd ci` and `npm.cmd start` in PowerShell.                   |
+| `ENOENT` / cannot find `package.json`        | Open the terminal in the extracted game folder containing `package.json`.                                               |
+| Missing script: `start`                      | Update your copy of the game, or use `npm run dev -- --port 5173` with an older copy.                                   |
+| `vite` is not recognized / missing a package | Run `npm ci` in the game folder. Install dependencies on your own PC; do not copy `node_modules` from another computer. |
+| Unsupported engine / `crypto.hash` error     | Check `node --version` and install the latest Node.js 24 LTS.                                                           |
+| Port 5173 is already in use                  | If the game is already running, open http://localhost:5173. Otherwise stop the application using that port and retry.   |
+| Blank page after opening an HTML file        | Run `npm start` and open http://localhost:5173 instead.                                                                 |
+
+Use the same browser and address each time: saves belong to that browser and origin (including its port). Export your save from the in-game Options menu before changing either. If startup still fails, include your operating system, Node version, command, and complete terminal error when reporting it.
 
 ## The adventure
 

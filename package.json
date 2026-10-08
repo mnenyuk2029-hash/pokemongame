@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "start": "vite --host localhost --port 5173 --strictPort --open",
     "dev": "vite --host 0.0.0.0",
     "build": "tsc --noEmit && vite build",
     "test": "tsx --test tests/*.test.ts",
