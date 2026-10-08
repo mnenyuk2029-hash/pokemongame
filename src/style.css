@@ -1,12 +1,12 @@
 @font-face {
   font-family: Pixel;
-  src: url("/fonts/pixelify.ttf") format("truetype");
+  src: url("../public/fonts/pixelify.ttf") format("truetype");
   font-display: swap;
   font-weight: 400 700;
 }
 @font-face {
   font-family: Gameboy;
-  src: url("/fonts/press-start.ttf") format("truetype");
+  src: url("../public/fonts/press-start.ttf") format("truetype");
   font-display: swap;
   font-weight: 400;
 }

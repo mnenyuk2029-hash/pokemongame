@@ -1,3 +1,4 @@
+import { asset } from "./assets";
 export type Element =
   | "Normal"
   | "Grass"
@@ -1562,4 +1563,4 @@ export const ITEMS = {
   },
 };
 export type ItemId = keyof typeof ITEMS;
-export const sprite = (id: number) => `/sprites/${id}.png`;
+export const sprite = (id: number) => asset(`sprites/${id}.png`);

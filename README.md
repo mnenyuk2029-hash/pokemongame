@@ -2,38 +2,15 @@
 
 A playable browser RPG set in Aurelian, an original region of nine connected landscapes. Walk, explore, catch Pokémon, build a team, and uncover why the eight beacons have gone quiet.
 
-## Play locally
+## Play by double-clicking index.html
 
-1. Install the latest **Node.js 24 LTS** from [nodejs.org](https://nodejs.org/), then reopen your terminal. npm is included.
-2. Download and **extract** the repository ZIP, or clone the repository.
-3. Open a terminal in the game folder (the folder containing `package.json`). On Windows, you can open that folder in File Explorer, type `cmd` in the address bar, and press Enter.
-4. Run:
+Download the repository ZIP and extract it, then double-click **`index.html`** in the top-level game folder. It opens directly in a modern browser (Chrome, Edge, or Firefox). **No installation, Node.js, terminal, server, or internet connection is needed to play.** All game code, Pokémon sprites, UI artwork, and fonts are embedded in that one file, so you can also copy just `index.html` to your PC.
 
-```sh
-npm ci
-npm start
-```
-
-The game opens in your browser at http://localhost:5173. If the browser does not open automatically, visit that address yourself. Keep the terminal open while playing; press Ctrl+C there to stop the game. On later launches, run `npm start` in the same folder; you only need `npm ci` again after downloading an updated version.
-
-**Do not double-click `index.html`** (including the one in `dist`). The game needs its local server to load TypeScript and game assets. No backend account or API key is needed.
+Keep the file at the same location and use the same browser for your saves. Local-file storage behavior varies by browser; use **Options → Export save** for backups and before moving/replacing the file or switching browsers. Saves from the hosted game do not transfer automatically: export there and import through Options in this copy.
 
 Click the current objective at the bottom of the screen to walk to Professor Fern and choose your starter. Eevee is already traveling with you. Press **Esc** or tap **Menu / Start** to open the in-game menu; Pokémon, Pokédex, bag, map, journal, saving, options, and controls are all inside it.
 
-### Startup troubleshooting
-
-| What you see                                 | What to do                                                                                                              |
-| -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `node` or `npm` is not recognized            | Install Node.js 24 LTS and reopen the terminal. Check `node --version` and `npm --version`.                             |
-| PowerShell says `npm.ps1` cannot be loaded   | Use Command Prompt (`cmd`) as described above, or run `npm.cmd ci` and `npm.cmd start` in PowerShell.                   |
-| `ENOENT` / cannot find `package.json`        | Open the terminal in the extracted game folder containing `package.json`.                                               |
-| Missing script: `start`                      | Update your copy of the game, or use `npm run dev -- --port 5173` with an older copy.                                   |
-| `vite` is not recognized / missing a package | Run `npm ci` in the game folder. Install dependencies on your own PC; do not copy `node_modules` from another computer. |
-| Unsupported engine / `crypto.hash` error     | Check `node --version` and install the latest Node.js 24 LTS.                                                           |
-| Port 5173 is already in use                  | If the game is already running, open http://localhost:5173. Otherwise stop the application using that port and retry.   |
-| Blank page after opening an HTML file        | Run `npm start` and open http://localhost:5173 instead.                                                                 |
-
-Use the same browser and address each time: saves belong to that browser and origin (including its port). Export your save from the in-game Options menu before changing either. If startup still fails, include your operating system, Node version, command, and complete terminal error when reporting it.
+If you see HTML text instead of the game, right-click `index.html`, select **Open with**, and choose your browser. If you downloaded a ZIP, extract it before opening the game.
 
 ## The adventure
 
@@ -71,11 +48,22 @@ Progress is stored under `wildbound-save-v1` in browser local storage. The game 
 
 ## Development
 
+Developers need the latest Node.js 24 LTS and npm. From the folder containing `package.json`:
+
+```sh
+npm ci
+npm start
+```
+
+Development opens http://localhost:5173/dev.html, which loads the editable TypeScript source with live updates. Keep the terminal running. `dev.html` needs Vite; the generated **`index.html`** is the version that opens directly from disk.
+
 ```sh
 npm test          # Engine, progression, content and world-connectivity tests
-npm run build     # TypeScript check and production bundle
+npm run build     # TypeScript check and standalone HTML
 npm run preview   # Serve the built production bundle
 ```
+
+**After editing the source, run `npm run build` and include the regenerated root `index.html` with your changes.** The build also writes `dist/index.html`; both files are identical, self-contained copies. `npm run preview` serves the generated version for HTTP testing. The build uses Vite to bundle a classic script and embed the CSS, fonts, and image assets.
 
 - `src/data.ts`: Pokémon, moves, type matchups, items, regions, story and research content.
 - `src/world.ts`: Deterministic terrain, world entities, collision, and pathfinding.

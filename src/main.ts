@@ -1,3 +1,4 @@
+import { asset } from "./assets";
 import "./style.css";
 import {
   Game,
@@ -103,7 +104,7 @@ document.querySelector("#app")!.innerHTML = `
   <div class="world-vignette" aria-hidden="true"></div>
   <header class="game-hud">
     <div class="location-banner pixel-panel"><span class="location-emblem">${ball}</span><div><span class="region-caption">AURELIAN REGION</span><h1 id="location-name">Verdant Hollow</h1></div></div>
-    <div class="hud-actions"><div class="weather-pill"></div><button class="menu-trigger pixel-panel" data-action="menu" aria-label="Open game menu"><img src="/ui/poke-ball.png" alt=""/><span>MENU</span><kbd>ESC</kbd></button></div>
+    <div class="hud-actions"><div class="weather-pill"></div><button class="menu-trigger pixel-panel" data-action="menu" aria-label="Open game menu"><img src="${asset("ui/poke-ball.png")}" alt=""/><span>MENU</span><kbd>ESC</kbd></button></div>
   </header>
   <div class="hud-bottom">
     <button class="companion-hud pixel-panel" data-action="team" aria-label="View your Pokémon" id="party-hud"></button>
@@ -185,15 +186,15 @@ function renderMenu() {
   const s = game.state;
   showModal(
     "MENU",
-    `<div class="pause-layout"><div class="pause-art"><div class="game-logo" aria-label="Pokémon Wildbound"><span>Pokémon</span><strong>WILDBOUND</strong></div><div class="pause-pokemon"><img src="${sprite(25)}" alt="Pikachu"/><img src="${sprite(s.party[0].species)}" alt="${SPECIES[s.party[0].species].name}"/></div><div class="trainer-card"><img src="/ui/trainer.svg" alt="Your trainer"/><div><small>TRAINER</small><strong>${esc(s.name)}</strong><span>₽${s.money.toLocaleString()}</span></div><div class="trainer-stats"><span>POKÉDEX <b>${s.caught.length}/87</b></span><span>BEACONS <b>${s.badges.length}/8</b></span><span>PLAY TIME <b>${Math.floor(s.played / 3600)}:${String(Math.floor(s.played / 60) % 60).padStart(2, "0")}</b></span></div></div><div class="menu-objective"><span>▸ ${game.chapter?.title || "A world worth wandering"}</span><p>${!s.starterChosen ? "Professor Fern is waiting near the lab." : objectives().find((o) => !o.done)?.text || "All eight beacons are shining."}</p></div></div><nav class="pause-options" aria-label="Game menu">${[
+    `<div class="pause-layout"><div class="pause-art"><div class="game-logo" aria-label="Pokémon Wildbound"><span>Pokémon</span><strong>WILDBOUND</strong></div><div class="pause-pokemon"><img src="${sprite(25)}" alt="Pikachu"/><img src="${sprite(s.party[0].species)}" alt="${SPECIES[s.party[0].species].name}"/></div><div class="trainer-card"><img src="${asset("ui/trainer.svg")}" alt="Your trainer"/><div><small>TRAINER</small><strong>${esc(s.name)}</strong><span>₽${s.money.toLocaleString()}</span></div><div class="trainer-stats"><span>POKÉDEX <b>${s.caught.length}/87</b></span><span>BEACONS <b>${s.badges.length}/8</b></span><span>PLAY TIME <b>${Math.floor(s.played / 3600)}:${String(Math.floor(s.played / 60) % 60).padStart(2, "0")}</b></span></div></div><div class="menu-objective"><span>▸ ${game.chapter?.title || "A world worth wandering"}</span><p>${!s.starterChosen ? "Professor Fern is waiting near the lab." : objectives().find((o) => !o.done)?.text || "All eight beacons are shining."}</p></div></div><nav class="pause-options" aria-label="Game menu">${[
       ["team", "POKÉMON", sprite(s.party[0].species), "P"],
-      ["dex", "POKÉDEX", "/ui/poke-ball.png", ""],
-      ["bag", "BAG", "/ui/potion.png", "B"],
-      ["map", "TOWN MAP", "/ui/town-map.png", "M"],
-      ["journal", "JOURNAL", "/ui/exp-share.png", "J"],
-      ["save", "SAVE", "/ui/great-ball.png", ""],
-      ["settings", "OPTIONS", "/ui/ether.png", ""],
-      ["help", "CONTROLS", "/ui/old-rod.png", "H"],
+      ["dex", "POKÉDEX", asset("ui/poke-ball.png"), ""],
+      ["bag", "BAG", asset("ui/potion.png"), "B"],
+      ["map", "TOWN MAP", asset("ui/town-map.png"), "M"],
+      ["journal", "JOURNAL", asset("ui/exp-share.png"), "J"],
+      ["save", "SAVE", asset("ui/great-ball.png"), ""],
+      ["settings", "OPTIONS", asset("ui/ether.png"), ""],
+      ["help", "CONTROLS", asset("ui/old-rod.png"), "H"],
       ["close", "RETURN", "", "ESC"],
     ]
       .map(
@@ -407,7 +408,7 @@ function itemArt(id: ItemId) {
     revive: "revive",
     ether: "ether",
   };
-  return `<img src="/ui/${files[id]}.png" alt=""/>`;
+  return `<img src="${asset(`ui/${files[id]}.png`)}" alt=""/>`;
 }
 function renderBag() {
   showModal(
@@ -464,7 +465,7 @@ function starter() {
   overlay = "starter";
   showModal(
     "CHOOSE YOUR POKÉMON",
-    `<div class="dialogue-person"><span class="portrait fern"><img src="/ui/professor.svg" alt="Professor Fern"/></span><div><span>PROFESSOR FERN</span><p>“Eevee seems to like you already. But the road ahead is long — you could both use another friend. Who would you like to come along?”</p></div></div><div class="starter-grid">${[1, 4, 7].map((id) => `<button class="starter-card" data-action="starter" data-id="${id}"><img src="${sprite(id)}" alt="${SPECIES[id].name}"/>${typeBadge(id)}<h3>${SPECIES[id].name}</h3><p>${id === 1 ? "Patient, loyal, and a little curious." : id === 4 ? "A small spark with a brave heart." : "Easygoing, until a friend needs help."}</p><span>Choose ${SPECIES[id].name} ${icon("arrow", 14)}</span></button>`).join("")}</div><p class="muted center-text">All three can also be found in the wild. Follow your heart.</p>`,
+    `<div class="dialogue-person"><span class="portrait fern"><img src="${asset("ui/professor.svg")}" alt="Professor Fern"/></span><div><span>PROFESSOR FERN</span><p>“Eevee seems to like you already. But the road ahead is long — you could both use another friend. Who would you like to come along?”</p></div></div><div class="starter-grid">${[1, 4, 7].map((id) => `<button class="starter-card" data-action="starter" data-id="${id}"><img src="${sprite(id)}" alt="${SPECIES[id].name}"/>${typeBadge(id)}<h3>${SPECIES[id].name}</h3><p>${id === 1 ? "Patient, loyal, and a little curious." : id === 4 ? "A small spark with a brave heart." : "Easygoing, until a friend needs help."}</p><span>Choose ${SPECIES[id].name} ${icon("arrow", 14)}</span></button>`).join("")}</div><p class="muted center-text">All three can also be found in the wild. Follow your heart.</p>`,
     true,
     "A SMALL HELLO, A GREAT BEGINNING",
   );
@@ -473,7 +474,7 @@ function dialogue(name: string, text: string, action?: string, label?: string) {
   overlay = "dialogue";
   showModal(
     name,
-    `<div class="dialogue-person"><span class="portrait"><img src="/ui/${name === "Ivy" ? "ivy" : name.includes("Fern") ? "professor" : "trainer"}.svg" alt=""/></span><div><span>${name === "Ivy" ? "YOUR CHILDHOOD FRIEND" : "A VOICE FROM AURELIAN"}</span><p>${text}</p></div></div><button class="button primary" data-action="${action || "close"}">${label || "Back to the adventure"} ${icon("arrow", 16)}</button>`,
+    `<div class="dialogue-person"><span class="portrait"><img src="${asset(`ui/${name === "Ivy" ? "ivy" : name.includes("Fern") ? "professor" : "trainer"}.svg`)}" alt=""/></span><div><span>${name === "Ivy" ? "YOUR CHILDHOOD FRIEND" : "A VOICE FROM AURELIAN"}</span><p>${text}</p></div></div><button class="button primary" data-action="${action || "close"}">${label || "Back to the adventure"} ${icon("arrow", 16)}</button>`,
     false,
     REGIONS[game.region].name.toUpperCase(),
   );
@@ -500,7 +501,7 @@ function interact(e = nearEntity(game.state.x, game.state.y)) {
     overlay = "trainer";
     showModal(
       e.name,
-      `<div class="dialogue-person"><span class="portrait"><img src="/ui/trainer.svg" alt=""/></span><div><span>TRAIL WARDEN · Lv. ${REGIONS[e.region].level + e.variant + 1}</span><p>“The best part of the trail is who you meet along the way. How about a friendly battle?”</p></div></div><div class="dialogue-actions"><button class="button pale" data-action="close">Maybe another time</button><button class="button primary" data-action="challenge" data-id="${e.id}">${game.state.defeated.includes(e.id) ? "A friendly rematch" : "Let’s battle"} ${icon("bolt", 17)}</button></div>`,
+      `<div class="dialogue-person"><span class="portrait"><img src="${asset("ui/trainer.svg")}" alt=""/></span><div><span>TRAIL WARDEN · Lv. ${REGIONS[e.region].level + e.variant + 1}</span><p>“The best part of the trail is who you meet along the way. How about a friendly battle?”</p></div></div><div class="dialogue-actions"><button class="button pale" data-action="close">Maybe another time</button><button class="button primary" data-action="challenge" data-id="${e.id}">${game.state.defeated.includes(e.id) ? "A friendly rematch" : "Let’s battle"} ${icon("bolt", 17)}</button></div>`,
     );
     return;
   }
@@ -675,7 +676,7 @@ function renderBattle() {
             ? "Ivy’s friendly rivalry"
             : "A meeting on the trail"
         : `A wild ${es.name} appeared!`,
-    `<div class="battle-field" style="--battle-landscape:url('${thumbs[b.region]}')"><div class="battle-info enemy-info"><div><strong>${es.name}${e.shiny ? " ✦" : ""}</strong><span>Lv. ${e.level}</span></div>${hpBar(e)}<small>${e.hp} / ${maxHp(e)} HP ${e.status ? `· ${e.status}` : ""}</small></div><div class="battle-platform enemy-platform"></div><img class="battle-sprite enemy-sprite ${e.hp <= 0 ? "fainted" : ""}" src="${sprite(e.species)}" alt="${es.name}"/><div class="battle-platform player-platform"></div><img class="battle-sprite player-sprite ${p.hp <= 0 ? "fainted" : ""}" src="/sprites/back-${p.species}.png" alt="${ps.name}"/><div class="battle-info player-info"><div><strong>${ps.name}${p.shiny ? " ✦" : ""}</strong><span>Lv. ${p.level}</span></div>${hpBar(p)}<small>${p.hp} / ${maxHp(p)} HP ${p.status ? `· ${p.status}` : ""}</small><div class="xp-track"><i style="width:${(p.xp / xpNeeded(p)) * 100}%"></i></div></div><span class="battle-weather">${icon("leaf", 13)} ${REGIONS[b.region].name} ${b.queue.length ? `· ${b.queue.length + 1} opponents left` : ""}</span></div><div class="battle-lower"><div class="battle-log" role="log" aria-live="polite">${b.log
+    `<div class="battle-field" style="--battle-landscape:url('${thumbs[b.region]}')"><div class="battle-info enemy-info"><div><strong>${es.name}${e.shiny ? " ✦" : ""}</strong><span>Lv. ${e.level}</span></div>${hpBar(e)}<small>${e.hp} / ${maxHp(e)} HP ${e.status ? `· ${e.status}` : ""}</small></div><div class="battle-platform enemy-platform"></div><img class="battle-sprite enemy-sprite ${e.hp <= 0 ? "fainted" : ""}" src="${sprite(e.species)}" alt="${es.name}"/><div class="battle-platform player-platform"></div><img class="battle-sprite player-sprite ${p.hp <= 0 ? "fainted" : ""}" src="${asset(`sprites/back-${p.species}.png`)}" alt="${ps.name}"/><div class="battle-info player-info"><div><strong>${ps.name}${p.shiny ? " ✦" : ""}</strong><span>Lv. ${p.level}</span></div>${hpBar(p)}<small>${p.hp} / ${maxHp(p)} HP ${p.status ? `· ${p.status}` : ""}</small><div class="xp-track"><i style="width:${(p.xp / xpNeeded(p)) * 100}%"></i></div></div><span class="battle-weather">${icon("leaf", 13)} ${REGIONS[b.region].name} ${b.queue.length ? `· ${b.queue.length + 1} opponents left` : ""}</span></div><div class="battle-lower"><div class="battle-log" role="log" aria-live="polite">${b.log
       .slice(-5)
       .map(
         (l, i, a) =>
