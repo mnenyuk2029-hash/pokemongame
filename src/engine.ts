@@ -9,6 +9,7 @@ import {
   SIDE_QUESTS,
   ITEMS,
   type ItemId,
+  COLORS,
   type Move,
 } from "./data";
 import { town, regionAt, tileAt, walkable, type Entity } from "./world";
@@ -67,6 +68,20 @@ export type Battle = {
   enemyGuard: boolean;
   region: number;
   rewarded: boolean;
+};
+export type BattleFrame = { battle: Battle; party: Pokemon[] };
+export type BattleCue = BattleFrame & {
+  kind:
+    | "attack"
+    | "heal"
+    | "guard"
+    | "sleep"
+    | "catch"
+    | "switch"
+    | "run"
+    | "poison";
+  side: "player" | "enemy";
+  color: string;
 };
 export const maxHp = (p: Pokemon) =>
   Math.floor((SPECIES[p.species].hp * 2 * p.level) / 100) + p.level + 15;
@@ -266,6 +281,20 @@ export class Game {
   random: () => number;
   lastSave = Date.now();
   saveError = false;
+  battleCues: BattleCue[] = [];
+  battleFrame(): BattleFrame | null {
+    return this.battle
+      ? structuredClone({ battle: this.battle, party: this.state.party })
+      : null;
+  }
+  recordCue(
+    kind: BattleCue["kind"],
+    side: BattleCue["side"] = "player",
+    color = "#f6d47d",
+  ) {
+    const frame = this.battleFrame();
+    if (frame) this.battleCues.push({ ...frame, kind, side, color });
+  }
   constructor(s = newGame(), random = Math.random) {
     this.state = s;
     this.random = random;
@@ -381,6 +410,7 @@ export class Game {
       this.heal();
       active = 0;
     }
+    this.battleCues = [];
     this.battle = {
       enemy: team[0],
       queue: team.slice(1),
@@ -474,6 +504,21 @@ export class Game {
     );
   }
   attack(p: Pokemon, target: Pokemon, key: string, guard = false) {
+    const actor = p === this.battle?.enemy ? "enemy" : "player";
+    try {
+      this.resolveAttack(p, target, key, guard);
+    } finally {
+      const move = MOVES[key];
+      this.recordCue(
+        move.kind === "heal" || move.kind === "guard" || move.kind === "sleep"
+          ? move.kind
+          : "attack",
+        actor,
+        COLORS[move.type],
+      );
+    }
+  }
+  resolveAttack(p: Pokemon, target: Pokemon, key: string, guard = false) {
     const b = this.battle!;
     const m = MOVES[key];
     if (p.status === "sleep") {
@@ -532,6 +577,7 @@ export class Game {
     const struggle = p.pp.every((n) => n === 0);
     if (!struggle && (!p.moves[index] || p.pp[index] <= 0)) return;
     const key = struggle ? "tackle" : p.moves[index];
+    this.battleCues = [];
     b.turn++;
     b.guard = false;
     const enemyFirst =
@@ -572,6 +618,7 @@ export class Game {
         const hit = Math.max(1, Math.floor(maxHp(p) / 10));
         p.hp = Math.max(0, p.hp - hit);
         b.log.push(`${SPECIES[p.species].name} lost ${hit} HP to poison.`);
+        this.recordCue("poison", p === b.enemy ? "enemy" : "player", "#ac78d9");
       }
     }
     this.checkFaint();
@@ -691,6 +738,8 @@ export class Game {
       return;
     }
     this.state.inventory[item]--;
+    this.battleCues = [];
+    b.turn++;
     if (this.random() < catchChance(b.enemy, great)) {
       const p = { ...b.enemy, moves: [...b.enemy.moves], pp: [...b.enemy.pp] };
       this.register(p.species);
@@ -702,12 +751,14 @@ export class Game {
       b.log.push(
         `Gotcha! ${SPECIES[p.species].name} was caught${this.state.party.length === 6 && this.state.box.includes(p) ? " and sent to storage" : ""}!`,
       );
+      this.recordCue("catch");
       this.addLog(
         `Caught ${SPECIES[p.species].name} in ${REGIONS[b.region].name}.`,
       );
       this.save();
     } else {
       b.log.push("Oh no! It broke free. Lower its HP or try a Great Ball.");
+      this.recordCue("catch");
       this.enemyAttack();
       this.endTurn();
     }
@@ -716,12 +767,16 @@ export class Game {
   flee() {
     const b = this.battle;
     if (!b || b.ended || b.trainer) return;
+    this.battleCues = [];
+    b.turn++;
     if (this.random() < 0.8) {
       b.ended = true;
       b.result = "Back to the trail";
       b.log.push("Got away safely.");
+      this.recordCue("run");
     } else {
       b.log.push("Couldn’t get away!");
+      this.recordCue("run");
       this.enemyAttack();
       this.endTurn();
     }
@@ -737,8 +792,11 @@ export class Game {
       this.state.party[index].hp <= 0
     )
       return;
+    this.battleCues = [];
+    b.turn++;
     b.active = index;
     b.log.push(`Go, ${SPECIES[this.state.party[index].species].name}!`);
+    this.recordCue("switch");
     this.enemyAttack();
     this.endTurn();
   }
@@ -782,9 +840,12 @@ export class Game {
     }
     this.state.inventory[item]--;
     if (this.battle) {
+      this.battleCues = [];
+      this.battle.turn++;
       this.battle.log.push(
         `Used ${ITEMS[item].name} on ${SPECIES[p.species].name}.`,
       );
+      this.recordCue("heal", "player", "#6cdea2");
       this.enemyAttack();
       this.endTurn();
     } else this.save();

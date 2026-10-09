@@ -382,3 +382,93 @@ test("a full storage box refuses a catch before consuming supplies or corrupting
   assert.equal(g.battle!.ended, false);
   assert.doesNotThrow(() => parseSave(JSON.stringify(g.state)));
 });
+
+test("every building interior has reachable services, reading spots and exit", async () => {
+  const { makeInterior, roomWalkable } = await import("../src/interiors");
+  for (const e of entities.filter((e) =>
+    ["lab", "house", "center", "shop"].includes(e.kind),
+  )) {
+    const room = makeInterior(e),
+      seen = new Set([`${room.x},${room.y}`]),
+      q = [{ x: room.x, y: room.y }];
+    for (let i = 0; i < q.length; i++)
+      for (const [dx, dy] of [
+        [0, 1],
+        [1, 0],
+        [0, -1],
+        [-1, 0],
+      ]) {
+        const p = { x: q[i].x + dx, y: q[i].y + dy },
+          key = `${p.x},${p.y}`;
+        if (!seen.has(key) && roomWalkable(room, p.x, p.y)) {
+          seen.add(key);
+          q.push(p);
+        }
+      }
+    for (const spot of room.spots)
+      assert.ok(
+        seen.has(`${spot.x},${spot.y}`),
+        `${e.id}: ${spot.label} unreachable`,
+      );
+    assert.equal(roomWalkable(room, 0, 8), false);
+    assert.equal(roomWalkable(room, 2, 3), false);
+  }
+});
+test("quest guidance follows progression and uses reachable destinations", async () => {
+  const { questGuide } = await import("../src/navigation");
+  const g = fresh();
+  assert.equal(questGuide(g)?.entity?.kind, "lab");
+  g.chooseStarter(4);
+  g.state.briefed = false;
+  assert.equal(questGuide(g)?.entity?.kind, "npc");
+  g.brief();
+  let guide = questGuide(g)!;
+  assert.ok(guide.route.length > 0);
+  assert.equal(guide.label.startsWith("Search the grass"), true);
+  for (const p of guide.route) assert.ok(walkable(p.x, p.y));
+  g.state.catches[g.chapter!.region] = 1;
+  guide = questGuide(g)!;
+  assert.equal(guide.entity?.kind, "trainer");
+  g.state.defeated.push(
+    ...entities
+      .filter((e) => e.kind === "trainer" && e.region === g.chapter!.region)
+      .slice(0, 2)
+      .map((e) => e.id),
+  );
+  assert.equal(questGuide(g)?.entity?.kind, "beacon");
+});
+test("battle presentation preserves action order and immutable HP snapshots", () => {
+  const g = fresh();
+  g.state.party = [makePokemon(133, 20, rng)];
+  g.startBattle([makePokemon(7, 20, rng)]);
+  const before = g.battleFrame()!;
+  g.actMove(0);
+  assert.equal(g.battleCues.length, 2);
+  assert.equal(g.battleCues[0].side, "player");
+  assert.equal(g.battleCues[1].side, "enemy");
+  assert.ok(g.battleCues[0].battle.enemy.hp < before.battle.enemy.hp);
+  assert.equal(g.battleCues[0].party[0].hp, before.party[0].hp);
+  assert.ok(g.battleCues[1].party[0].hp < before.party[0].hp);
+  const recorded = g.battleCues[0].battle.enemy.hp;
+  g.battle!.enemy.hp = 0;
+  assert.equal(g.battleCues[0].battle.enemy.hp, recorded);
+  assert.doesNotThrow(() => parseSave(JSON.stringify(g.state)));
+});
+test("switch, healing and failed catching show their action before the counterattack", () => {
+  const g = fresh();
+  g.state.party = [makePokemon(133, 20, rng), makePokemon(4, 20, rng)];
+  g.startBattle([makePokemon(7, 20, rng)]);
+  g.switchPokemon(1);
+  assert.equal(g.battleCues[0].kind, "switch");
+  assert.equal(g.battleCues[1].side, "enemy");
+  g.battleCues = [];
+  g.state.party[1].hp = 5;
+  g.useItem("potion", 1);
+  assert.equal(g.battleCues[0].kind, "heal");
+  assert.ok(g.battleCues[0].party[1].hp > 5);
+  g.battleCues = [];
+  g.random = () => 0.99;
+  g.throwBall();
+  assert.equal(g.battleCues[0].kind, "catch");
+  assert.equal(g.battleCues[1].side, "enemy");
+});

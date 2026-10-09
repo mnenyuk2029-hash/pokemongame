@@ -1,3 +1,13 @@
+import { playBattleCue } from "./battle-effects";
+import {
+  makeInterior,
+  roomWalkable,
+  roomSpot,
+  roomTitle,
+  MEMORY_PAGES,
+  type Hotspot,
+} from "./interiors";
+import { questGuide, entityApproach } from "./navigation";
 import { asset } from "./assets";
 import "./style.css";
 import {
@@ -5,6 +15,8 @@ import {
   parseSave,
   newGame,
   maxHp,
+  effectiveness,
+  type BattleFrame,
   xpNeeded,
   type Pokemon,
 } from "./engine";
@@ -115,6 +127,180 @@ document.querySelector("#app")!.innerHTML = `
   <div class="mobile-controls"><div class="dpad"><button data-dir="0,-1" aria-label="Move up">▲</button><button data-dir="-1,0" aria-label="Move left">◀</button><span></span><button data-dir="0,1" aria-label="Move down">▼</button><button data-dir="1,0" aria-label="Move right">▶</button></div><div class="touch-actions"><button class="touch-menu" data-action="menu" aria-label="Open game menu">START</button><button class="touch-interact" data-action="interact" aria-label="Interact">A</button></div></div>
 </main><div id="toast" class="toast pixel-panel" role="status"></div><div id="modal-root"></div>`;
 const renderer = new Renderer(document.querySelector("#world")!, game);
+let roomPath: { x: number; y: number }[] = [];
+let roomDestination: Hotspot | undefined;
+let guideStamp = "",
+  guideOrigin = "",
+  guideTime = 0;
+function refreshGuide(force = false) {
+  const s = game.state;
+  const stamp = [
+    s.starterChosen,
+    s.chapter,
+    s.briefed,
+    s.catches.join(),
+    s.defeated.length,
+  ].join("|");
+  const old = renderer.guide;
+  const origin = `${s.x},${s.y}`;
+  if (!force && stamp === guideStamp && old) {
+    if (guideOrigin === origin) return;
+    const index = old.route.findIndex((p) => p.x === s.x && p.y === s.y);
+    if (index >= 0) {
+      old.route = old.route.slice(index + 1);
+      guideOrigin = origin;
+      return;
+    }
+    if (performance.now() - guideTime < 900) return;
+    if (old.destination.x === s.x && old.destination.y === s.y) return;
+  }
+  guideStamp = stamp;
+  guideOrigin = origin;
+  guideTime = performance.now();
+  renderer.guide = questGuide(game);
+}
+function enterBuilding(entity: Entity) {
+  path = [];
+  pendingEntity = undefined;
+  keys.clear();
+  renderer.target = null;
+  renderer.interior = makeInterior(entity);
+  renderer.player = { x: 9 * 24, y: 11 * 24 };
+  roomPath = [];
+  document.body.classList.add("inside-building");
+  if (!game.state.reducedMotion)
+    renderer.canvas.animate([{ opacity: 0 }, { opacity: 1 }], {
+      duration: 350,
+    });
+  updateLocation();
+}
+function leaveBuilding() {
+  renderer.interior = null;
+  roomPath = [];
+  roomDestination = undefined;
+  keys.clear();
+  renderer.player = { x: game.state.x * 24, y: game.state.y * 24 };
+  document.body.classList.remove("inside-building");
+  if (!game.state.reducedMotion)
+    renderer.canvas.animate([{ opacity: 0 }, { opacity: 1 }], {
+      duration: 350,
+    });
+  updateLocation();
+  refreshGuide(true);
+}
+function stepPlayer(dx: number, dy: number) {
+  const room = renderer.interior;
+  if (!room) return game.step(dx, dy);
+  room.facing = dy > 0 ? 0 : dx < 0 ? 1 : dx > 0 ? 2 : 3;
+  if (!roomWalkable(room, room.x + dx, room.y + dy)) return false;
+  room.x += dx;
+  room.y += dy;
+  if (room.x === 9 && room.y === 12 && dy > 0) leaveBuilding();
+  return true;
+}
+function inspectRoom(
+  spot = renderer.interior ? roomSpot(renderer.interior) : undefined,
+) {
+  const room = renderer.interior;
+  if (!room) return;
+  if (!spot) {
+    toast(
+      "Walk up to the counter, a resident, or a gold floor marker and press E.",
+    );
+    return;
+  }
+  if (spot.action === "exit") {
+    leaveBuilding();
+    return;
+  }
+  if (spot.action === "heal") {
+    game.heal();
+    toast("Your team is fully rested. HP, PP, and status restored.");
+    return;
+  }
+  if (spot.action === "shop") {
+    openPanel("shop");
+    return;
+  }
+  if (spot.action === "research") {
+    overlayTab = "research";
+    openPanel("journal");
+    return;
+  }
+  if (spot.action === "read") {
+    const region = room.entity.region,
+      key = `memory-${region}`;
+    const fresh = !game.state.claimed.includes(key);
+    if (fresh) {
+      game.state.claimed.push(key);
+      game.state.money += 200;
+      game.state.inventory.potion++;
+      game.addLog(`Recovered a field-journal page in ${REGIONS[region].name}.`);
+      game.save();
+      renderHud();
+    }
+    const count = game.state.claimed.filter((k) =>
+      k.startsWith("memory-"),
+    ).length;
+    dialogue(
+      "The lost field journal",
+      `${MEMORY_PAGES[region]}<br><br><strong>${count}/9 regional pages recovered.</strong> ${fresh ? "Received ₽200 and a Potion. Look for another page inside a home in each region." : "This page is already in your collection. Visit homes in other regions to complete the journal."}`,
+    );
+    return;
+  }
+  if (room.entity.kind === "lab") {
+    if (!game.state.starterChosen) starter();
+    else
+      dialogue(
+        "Professor Fern",
+        "“Your mother left pages of her journal with friends across all nine regions. Ask inside their homes. Every page tells you something the machines could never measure.”",
+        "journal",
+        "Open your journal",
+      );
+  } else
+    dialogue(
+      "A local friend",
+      `${REGIONS[room.entity.region].description}<br><br>“You can rest here whenever you need. There’s a page of the old field journal on the table. And if you’re following the beacons, the gold dots outside point to your next task.”`,
+    );
+}
+function walkRoomTo(x: number, y: number, spot?: Hotspot) {
+  const room = renderer.interior;
+  if (!room || !roomWalkable(room, x, y)) return;
+  const q = [{ x: room.x, y: room.y }],
+    prev = new Map<string, { x: number; y: number } | null>([
+      [`${room.x},${room.y}`, null],
+    ]);
+  for (let i = 0; i < q.length; i++) {
+    const p = q[i];
+    if (p.x === x && p.y === y) break;
+    for (const [dx, dy] of [
+      [0, 1],
+      [1, 0],
+      [0, -1],
+      [-1, 0],
+    ]) {
+      const n = { x: p.x + dx, y: p.y + dy },
+        k = `${n.x},${n.y}`;
+      if (!prev.has(k) && roomWalkable(room, n.x, n.y)) {
+        prev.set(k, p);
+        q.push(n);
+      }
+    }
+  }
+  if (!prev.has(`${x},${y}`)) return;
+  roomPath = [];
+  let p = { x, y };
+  while (p.x !== room.x || p.y !== room.y) {
+    roomPath.unshift(p);
+    p = prev.get(`${p.x},${p.y}`)!;
+  }
+  roomDestination = spot;
+  if (!roomPath.length && spot) {
+    roomDestination = undefined;
+    inspectRoom(spot);
+  }
+}
+
 function hpBar(p: Pokemon) {
   return `<span class="hp-track"><i style="width:${(p.hp / maxHp(p)) * 100}%;background:${p.hp / maxHp(p) < 0.25 ? "#e86650" : p.hp / maxHp(p) < 0.5 ? "#edbd48" : "#55b779"}"></i></span>`;
 }
@@ -159,6 +345,7 @@ function renderHud() {
   document.querySelector("#save-indicator")!.textContent = game.saveError
     ? "SAVE FAILED · CHECK OPTIONS"
     : "AUTOSAVE ON";
+  refreshGuide();
   updateLocation();
 }
 function updateLocation() {
@@ -169,9 +356,39 @@ function updateLocation() {
   document.querySelector(".weather-pill")!.innerHTML =
     `${icon(hours >= 19 || hours < 6 ? "moon" : "sun", 18)}<span>${hours % 12 || 12}:${String(minutes % 60).padStart(2, "0")} ${hours < 12 ? "AM" : "PM"}</span>`;
   document.querySelector("#location-name")!.textContent = r.name;
+  if (renderer.interior) {
+    const room = renderer.interior,
+      spot = roomSpot(room);
+    document.querySelector("#location-name")!.textContent = room.entity.name;
+    document.querySelector(".region-caption")!.textContent =
+      "INDOORS · " + REGIONS[room.entity.region].name;
+    document.querySelector("#world-hint")!.innerHTML =
+      `<kbd>E</kbd><span>${spot?.label || "EXPLORE"}</span>`;
+    document
+      .querySelector("#world-hint")!
+      .setAttribute("aria-label", spot?.label || "Inspect room");
+    document
+      .querySelector("#world")!
+      .setAttribute("data-position", `${room.x},${room.y}`);
+    document
+      .querySelector("#world")!
+      .setAttribute(
+        "aria-label",
+        roomTitle(room) +
+          ". Use movement keys to explore. E to interact. South door to exit.",
+      );
+    return;
+  }
+  document.querySelector(".region-caption")!.textContent = "AURELIAN REGION";
+  document
+    .querySelector("#world")!
+    .setAttribute(
+      "aria-label",
+      "Pokémon overworld. Follow the gold dots to your next objective.",
+    );
   const e = nearEntity(s.x, s.y);
   document.querySelector("#world-hint")!.innerHTML =
-    `<kbd>E</kbd><span>${e ? (e.kind === "trainer" ? "BATTLE" : e.kind === "center" ? "REST" : e.kind === "shop" ? "SHOP" : e.kind === "chest" ? "OPEN" : "TALK") : "INTERACT"}</span>`;
+    `<kbd>E</kbd><span>${e ? (e.kind === "trainer" ? "BATTLE" : ["center", "shop", "lab", "house"].includes(e.kind) ? "ENTER" : e.kind === "shop" ? "SHOP" : e.kind === "chest" ? "OPEN" : "TALK") : "INTERACT"}</span>`;
   document
     .querySelector("#world-hint")!
     .setAttribute(
@@ -215,7 +432,7 @@ function toast(message: string) {
   clearTimeout(noticeTimer);
   noticeTimer = setTimeout(
     () => el.classList.remove("visible"),
-    Math.min(14000, 3000 + message.length * 30),
+    Math.min(6500, 2000 + message.length * 18),
   );
 }
 function showModal(
@@ -251,6 +468,7 @@ function clearModal() {
   document.body.style.overflow = "hidden";
 }
 function closeModal() {
+  if (battleAnimating) return;
   if (game.battle) {
     if (game.battle.ended) {
       game.closeBattle();
@@ -392,7 +610,7 @@ function renderJournal() {
             return `<article class="research-card"><span class="research-icon">${icon(claimed ? "check" : q.kind === "caught" ? "dex" : q.kind === "steps" ? "compass" : "star", 23)}</span><div><h3>${q.name}</h3><p>${q.desc}</p><div class="xp-track"><i style="width:${Math.min(100, (progress / q.target) * 100)}%"></i></div><small>${Math.min(q.target, progress)} / ${q.target} · Reward: ₽${q.reward.toLocaleString()}</small></div><button class="button ${progress >= q.target && !claimed ? "primary" : "pale"}" data-action="claim" data-id="${q.id}" ${claimed || progress < q.target ? "disabled" : ""}>${claimed ? "Collected" : "Claim"}</button></article>`;
           }).join("")}</div>`
         : overlayTab === "memories"
-          ? `<div class="memories">${s.log.map((l, i) => `<article><span>${i === 0 ? "LATEST MEMORY" : "FIELD NOTE"}</span><p>${esc(l)}</p></article>`).join("")}</div>`
+          ? `<h3>The lost field journal · ${s.claimed.filter((k) => k.startsWith("memory-")).length}/9 pages</h3><p class="muted">Visit homes in each region and read the notes left on their tables.</p><div class="memory-pages">${MEMORY_PAGES.map((page, r) => `<article class="memory-page"><h3>${REGIONS[r].name}</h3><p>${s.claimed.includes(`memory-${r}`) ? page : "An undiscovered page. Ask inside a local home."}</p></article>`).join("")}</div><div class="memories">${s.log.map((l, i) => `<article><span>${i === 0 ? "LATEST MEMORY" : "FIELD NOTE"}</span><p>${esc(l)}</p></article>`).join("")}</div>`
           : `<article class="story-intro"><span class="eyebrow">${c ? "YOUR CURRENT CHAPTER" : "THE STORY CONTINUES"}</span><h3>${c?.title || "A world worth wandering"}</h3><p>${c?.intro || "The eight beacons sing again. Your mother is home. Complete your Pokédex, challenge the wardens to rematches, and see what waits beyond the next bend."}</p>${c ? `<button class="button primary" data-action="brief">${s.starterChosen ? "Follow this chapter" : "Meet Professor Fern"} ${icon("arrow", 16)}</button>` : ""}</article><div class="chapter-list">${CHAPTERS.map((ch, i) => `<article class="chapter-item ${i === s.chapter ? "current" : ""}"><span class="chapter-number">${i < s.chapter ? icon("check", 17) : String(i + 1).padStart(2, "0")}</span><div><span>${REGIONS[ch.region].name}</span><h3>${i <= s.chapter ? ch.title : "An unwritten chapter"}</h3>${i < s.chapter ? `<p>${ch.reveal}</p>` : ""}</div><span>${i < s.chapter ? "RESTORED" : i === s.chapter ? "IN PROGRESS" : icon("lock", 16)}</span></article>`).join("")}</div>`
     }`,
     true,
@@ -481,6 +699,14 @@ function dialogue(name: string, text: string, action?: string, label?: string) {
 }
 function interact(e = nearEntity(game.state.x, game.state.y)) {
   if (game.battle || overlay) return;
+  if (renderer.interior) {
+    inspectRoom();
+    return;
+  }
+  if (e && ["center", "shop", "house", "lab"].includes(e.kind)) {
+    enterBuilding(e);
+    return;
+  }
   if (!e) {
     toast("Get closer to a person, building, or chest, then press E.");
     return;
@@ -577,6 +803,14 @@ function interact(e = nearEntity(game.state.x, game.state.y)) {
     );
     return;
   }
+  if (
+    e.kind === "npc" &&
+    game.chapter?.region === e.region &&
+    !game.state.briefed
+  ) {
+    dialogue(e.name, game.chapter.intro, "brief", "Hear the chapter briefing");
+    return;
+  }
   const lines = [
     "“Some of us travel to find something. Some travel to leave something behind. And some just like the walk.”",
     "“Try talking to the people with a little marker above them. A good battle teaches you something — win or lose.”",
@@ -606,94 +840,126 @@ function navigateTo(x: number, y: number, e?: Entity) {
   }
 }
 function approach(e: Entity) {
-  const options = [];
-  for (let x = e.x - 1; x <= e.x + e.w; x++)
-    for (let y = e.y - 1; y <= e.y + e.h; y++)
-      if (walkable(x, y)) options.push({ x, y });
-  options.sort(
-    (a, b) =>
-      Math.hypot(a.x - game.state.x, a.y - game.state.y) -
-      Math.hypot(b.x - game.state.x, b.y - game.state.y),
-  );
-  for (const p of options) {
-    const route = pathTo(game.state.x, game.state.y, p.x, p.y);
-    if (route.length || (p.x === game.state.x && p.y === game.state.y)) {
-      navigateTo(p.x, p.y, e);
-      return;
-    }
-  }
-  toast("Look for another way around.");
+  const target = entityApproach(game, e);
+  if (target) navigateTo(target.destination.x, target.destination.y, e);
+  else toast("Look for another way around.");
 }
 function trackQuest() {
   closeModal();
-  if (!game.state.starterChosen) {
-    approach(entities.find((e) => e.name === "Professor Fern")!);
-  } else if (!game.state.briefed) {
-    openPanel("journal");
-  } else if (game.bossReady) {
-    approach(
-      entities.find(
-        (e) => e.kind === "beacon" && e.region === game.chapter?.region,
-      )!,
-    );
-  } else if (game.chapter) {
-    if (game.region !== game.chapter.region) {
-      const p = town(game.chapter.region);
-      navigateTo(p.x, p.y);
-      toast(`Following the trail to ${REGIONS[game.chapter.region].name}.`);
-    } else if (game.state.catches[game.region] === 0) {
-      toast(
-        "Step off the path into tall grass. Weaken a wild Pokémon, then throw a Poké Ball.",
-      );
-    } else {
-      approach(
-        entities.find(
-          (e) =>
-            e.kind === "trainer" &&
-            e.region === game.region &&
-            !game.state.defeated.includes(e.id),
-        )!,
-      );
-    }
+  if (renderer.interior) leaveBuilding();
+  refreshGuide(true);
+  const guide = renderer.guide;
+  if (guide) {
+    navigateTo(guide.destination.x, guide.destination.y, guide.entity);
+    toast(`${guide.label}. Follow the gold dots; movement keys take over.`);
   } else openPanel("journal");
   renderHud();
 }
+let battleAnimating = false;
+let battleView: BattleFrame | null = null;
+async function battleAction(action: () => unknown) {
+  if (battleAnimating || !game.battle || game.battle.ended) return;
+  let previous = game.battleFrame()!;
+  battleAnimating = true;
+  game.battleCues = [];
+  overlayTab = "";
+  try {
+    action();
+    const final = game.battleFrame();
+    for (const cue of game.battleCues) {
+      battleView = cue;
+      renderBattle();
+      await playBattleCue(cue, previous, game.state.reducedMotion);
+      previous = cue;
+    }
+    battleView = final;
+  } finally {
+    battleAnimating = false;
+    battleView = null;
+    game.battleCues = [];
+    renderBattle();
+    renderHud();
+  }
+}
 function renderBattle() {
-  const b = game.battle;
+  const b = battleView?.battle ?? game.battle;
   if (!b) return;
-  const p = game.state.party[b.active],
+  const party = battleView?.party ?? game.state.party,
+    p = party[b.active],
     e = b.enemy,
     ps = SPECIES[p.species],
     es = SPECIES[e.species];
   const struggle = p.pp.every((n) => n === 0);
+  const disabled = battleAnimating ? "disabled" : "";
+  const nav = `<nav class="combat-nav" aria-label="Battle choices">${[
+    ["moves", "FIGHT", "Choose a move", "⚔"],
+    [
+      "balls",
+      "CATCH",
+      b.trainer ? "Wild Pokémon only" : "Throw a Poké Ball",
+      "◉",
+    ],
+    ["switch", "POKÉMON", "Switch your partner", "↔"],
+    ["items", "BAG", "Heal or restore PP", "✚"],
+  ]
+    .map(
+      ([tab, label, hint, symbol]) =>
+        `<button data-action="battle-tab" data-id="${tab}" class="${overlayTab === tab ? "selected" : ""}" ${disabled} ${tab === "balls" && b.trainer ? "disabled" : ""}><b>${symbol}</b><span>${label}<small>${hint}</small></span></button>`,
+    )
+    .join(
+      "",
+    )}<button data-action="flee" ${disabled} ${b.trainer ? "disabled" : ""}><b>➜</b><span>RUN<small>${b.trainer ? "Trainer battle" : "Try to escape"}</small></span></button></nav>`;
+  let commands = "";
+  if (battleAnimating)
+    commands = `<div class="turn-wait"><span class="turn-spinner">◈</span><h3>Turn ${b.turn || 1} · Watch the action</h3><p>Each action resolves in order. Your choices return in a moment.</p></div>`;
+  else if (b.ended)
+    commands = `<div class="battle-result"><h3>${b.result}</h3><button class="button primary full" data-action="battle-close">${b.rewarded ? "The beacon awakens" : "Continue adventure"} →</button></div>`;
+  else if (overlayTab === "moves")
+    commands = `<h3>Choose ${ps.name}’s move</h3><div class="move-grid">${(struggle
+      ? ["tackle"]
+      : p.moves
+    )
+      .map((key, i) => {
+        const m = MOVES[key],
+          eff = effectiveness(m, e);
+        return `<button class="move-button" data-action="move" data-id="${i}" style="--type:${COLORS[m.type]}" ${!struggle && p.pp[i] === 0 ? "disabled" : ""}><strong>${struggle ? "Struggle" : m.name}</strong><span>${m.type} · ${m.power ? `Power ${m.power}` : m.kind}<b>${struggle ? "∞" : p.pp[i]} PP</b></span><small>${m.power ? (eff > 1 ? "SUPER EFFECTIVE ×2" : eff === 0 ? "NO EFFECT" : eff < 1 ? "RESISTED ×½" : "Normal damage") : m.kind === "guard" ? "Block most incoming damage" : m.kind === "heal" ? "Recover half your HP" : "Put the opponent to sleep"}</small></button>`;
+      })
+      .join("")}</div>`;
+  else if (overlayTab === "balls")
+    commands = `<h3>Weaken it, then throw!</h3><div class="battle-items">${(["ball", "great"] as ItemId[]).map((id) => `<button data-action="catch" data-id="${id}" ${game.state.inventory[id] < 1 ? "disabled" : ""}>${itemArt(id)} ${ITEMS[id].name}<span>×${game.state.inventory[id]}</span></button>`).join("")}</div><p class="combat-tip">Lower HP and sleep improve your catch chance.</p>`;
+  else if (overlayTab === "switch")
+    commands = `<h3>Switch Pokémon · The opponent gets a turn</h3><div class="battle-switch">${party.map((mon, i) => `<button data-action="switch" data-id="${i}" ${i === b.active || mon.hp === 0 ? "disabled" : ""}><img src="${sprite(mon.species)}" alt=""/><span>${SPECIES[mon.species].name}<small>${mon.hp}/${maxHp(mon)} HP ${i === b.active ? "· Active" : ""}</small></span></button>`).join("")}</div>`;
+  else if (overlayTab === "items")
+    commands = `<h3>Use an item · The opponent gets a turn</h3><div class="battle-items">${(["potion", "super", "revive", "ether"] as ItemId[]).map((id) => `<button data-action="item-target" data-id="${id}" ${game.state.inventory[id] < 1 ? "disabled" : ""}>${itemArt(id)} ${ITEMS[id].name}<span>×${game.state.inventory[id]}</span></button>`).join("")}</div>`;
+  else
+    commands = `<div class="battle-prompt"><img src="${sprite(p.species)}" alt=""/><div><h3>What will ${ps.name} do?</h3><p>${b.trainer ? "Defeat the opposing team. Switch for a type advantage or use your bag to recover." : "Battle to gain experience, or weaken this Pokémon and choose CATCH to recruit it."}</p></div></div>`;
+  const messages = b.log.slice(-3);
   showModal(
-    b.ended
-      ? b.result!
-      : b.trainer
-        ? b.boss !== undefined
-          ? `${CHAPTERS[b.boss].keeper}’s challenge`
-          : b.trainer.startsWith("rival")
-            ? "Ivy’s friendly rivalry"
-            : "A meeting on the trail"
-        : `A wild ${es.name} appeared!`,
-    `<div class="battle-field" style="--battle-landscape:url('${thumbs[b.region]}')"><div class="battle-info enemy-info"><div><strong>${es.name}${e.shiny ? " ✦" : ""}</strong><span>Lv. ${e.level}</span></div>${hpBar(e)}<small>${e.hp} / ${maxHp(e)} HP ${e.status ? `· ${e.status}` : ""}</small></div><div class="battle-platform enemy-platform"></div><img class="battle-sprite enemy-sprite ${e.hp <= 0 ? "fainted" : ""}" src="${sprite(e.species)}" alt="${es.name}"/><div class="battle-platform player-platform"></div><img class="battle-sprite player-sprite ${p.hp <= 0 ? "fainted" : ""}" src="${asset(`sprites/back-${p.species}.png`)}" alt="${ps.name}"/><div class="battle-info player-info"><div><strong>${ps.name}${p.shiny ? " ✦" : ""}</strong><span>Lv. ${p.level}</span></div>${hpBar(p)}<small>${p.hp} / ${maxHp(p)} HP ${p.status ? `· ${p.status}` : ""}</small><div class="xp-track"><i style="width:${(p.xp / xpNeeded(p)) * 100}%"></i></div></div><span class="battle-weather">${icon("leaf", 13)} ${REGIONS[b.region].name} ${b.queue.length ? `· ${b.queue.length + 1} opponents left` : ""}</span></div><div class="battle-lower"><div class="battle-log" role="log" aria-live="polite">${b.log
-      .slice(-5)
-      .map(
-        (l, i, a) =>
-          `<p class="${i === a.length - 1 ? "latest" : ""}">${l}</p>`,
-      )
-      .join(
-        "",
-      )}</div><div class="battle-commands">${b.ended ? `<div class="battle-result"><span>✦</span><h3>${b.result}</h3><button class="button primary full" data-action="battle-close">${b.rewarded ? "The beacon awakens" : "Back to the adventure"} ${icon("arrow", 16)}</button></div>` : overlayTab === "balls" ? `<h3>Make a new friend.</h3><div class="battle-items"><button data-action="catch" data-id="ball" ${game.state.inventory.ball < 1 ? "disabled" : ""}>${ball} Poké Ball <span>×${game.state.inventory.ball}</span></button><button data-action="catch" data-id="great" ${game.state.inventory.great < 1 ? "disabled" : ""}>${ball} Great Ball <span>×${game.state.inventory.great}</span></button></div><p class="muted">Lower HP makes catching easier.</p><button class="text-button" data-action="battle-back">← Back</button>` : overlayTab === "switch" ? `<h3>Choose a companion.</h3><div class="battle-switch">${game.state.party.map((mon, i) => `<button data-action="switch" data-id="${i}" ${i === b.active || mon.hp === 0 ? "disabled" : ""}><img src="${sprite(mon.species)}" alt=""/><span>${SPECIES[mon.species].name}<small>${mon.hp}/${maxHp(mon)} HP</small></span></button>`).join("")}</div><button class="text-button" data-action="battle-back">← Back</button>` : overlayTab === "items" ? `<h3>A little help.</h3><div class="battle-items">${(["potion", "super", "revive", "ether"] as ItemId[]).map((id) => `<button data-action="item-target" data-id="${id}" ${game.state.inventory[id] < 1 ? "disabled" : ""}>${ITEMS[id].name}<span>×${game.state.inventory[id]}</span></button>`).join("")}</div><button class="text-button" data-action="battle-back">← Back</button>` : `<h3>What will ${ps.name} do?</h3><div class="move-grid">${(struggle ? ["tackle"] : p.moves).map((m, i) => `<button class="move-button" data-action="move" data-id="${i}" style="--type:${COLORS[MOVES[m].type]}" ${!struggle && p.pp[i] === 0 ? "disabled" : ""}><strong>${struggle ? "Struggle" : MOVES[m].name}</strong><span>${MOVES[m].type} <b>${struggle ? "∞" : `${p.pp[i]}/${MOVES[m].pp}`} PP</b></span></button>`).join("")}</div><div class="battle-actions"><button data-action="battle-tab" data-id="balls" ${b.trainer ? "disabled" : ""}>${ball} Catch</button><button data-action="battle-tab" data-id="switch">${icon("team", 15)} Switch</button><button data-action="battle-tab" data-id="items">${icon("bag", 15)} Bag</button><button data-action="flee" ${b.trainer ? "disabled" : ""}>${icon("arrow", 15)} Run</button></div>`}</div></div>`,
+    b.trainer
+      ? b.trainer.startsWith("rival")
+        ? "RIVAL IVY"
+        : b.boss !== undefined
+          ? `${CHAPTERS[b.boss].keeper.toUpperCase()} · BEACON CHALLENGE`
+          : "TRAIL WARDEN"
+      : "WILD ENCOUNTER",
+    `<div class="battle-field" data-turn="${b.turn}" style="--battle-landscape:url('${thumbs[b.region]}')"><div class="battle-atmosphere"></div><div class="battle-info enemy-info"><div><strong>${es.name}${e.shiny ? " ✦" : ""}</strong><span>Lv.${e.level}</span></div><span class="combat-type" style="color:${COLORS[es.type]}">${es.type.toUpperCase()} ${e.status ? `· ${e.status.toUpperCase()}` : ""}</span>${hpBar(e)}<small>${e.hp} / ${maxHp(e)} HP ${b.trainer ? `· ${b.queue.length + 1} opponent${b.queue.length ? "s" : ""} left` : ""}</small></div><div class="battle-platform enemy-platform"></div><img class="battle-sprite enemy-sprite ${e.hp <= 0 ? "fainted" : ""}" src="${sprite(e.species)}" alt="${es.name}"/><div class="battle-platform player-platform"></div><img class="battle-sprite player-sprite ${p.hp <= 0 ? "fainted" : ""}" src="${asset(`sprites/back-${p.species}.png`)}" alt="${ps.name}"/><div class="battle-info player-info"><div><strong>${ps.name}</strong><span>Lv.${p.level}</span></div><span class="combat-type" style="color:${COLORS[ps.type]}">${ps.type.toUpperCase()} ${p.status ? `· ${p.status.toUpperCase()}` : ""}</span>${hpBar(p)}<small>${p.hp} / ${maxHp(p)} HP</small><div class="xp-track"><i style="width:${(p.xp / xpNeeded(p)) * 100}%"></i></div></div><span class="battle-weather">${REGIONS[b.region].name} · Turn ${b.turn}</span></div><div class="battle-lower"><div class="battle-log" role="log" aria-live="polite">${messages.map((line, i) => `<p class="${i === messages.length - 1 ? "latest" : ""}">${esc(line)}</p>`).join("")}</div><div class="battle-commands">${commands}</div>${!b.ended || battleAnimating ? nav : ""}</div>`,
     true,
-    b.trainer ? "TRAINER BATTLE" : "A WILD ENCOUNTER",
+    battleAnimating
+      ? "ACTION IN PROGRESS"
+      : b.ended
+        ? "BATTLE COMPLETE"
+        : "CHOOSE YOUR NEXT ACTION",
   );
   document.querySelector(".modal")?.classList.add("battle-modal");
-  const close = document.querySelector(
+  document
+    .querySelector(".battle-modal")
+    ?.classList.toggle("reduced-motion", game.state.reducedMotion);
+  const close = document.querySelector<HTMLButtonElement>(
     '.modal [data-action="close"]',
-  ) as HTMLButtonElement;
-  close.disabled = !b.ended;
+  );
+  if (close) close.disabled = !b.ended || battleAnimating;
 }
+
 let audioCtx: AudioContext | undefined,
   musicTimer: ReturnType<typeof setInterval> | undefined,
   note = 0;
@@ -740,7 +1006,7 @@ document.addEventListener("click", (event) => {
   const el = (event.target as HTMLElement).closest<HTMLElement>(
     "[data-action]",
   );
-  if (!el || (el as HTMLButtonElement).disabled) return;
+  if (!el || (el as HTMLButtonElement).disabled || battleAnimating) return;
   const a = el.dataset.action,
     id = el.dataset.id!;
   if (
@@ -791,6 +1057,7 @@ document.addEventListener("click", (event) => {
       break;
     case "travel": {
       const r = Number(id);
+      if (renderer.interior) leaveBuilding();
       closeModal();
       path = [];
       pendingEntity = undefined;
@@ -883,17 +1150,17 @@ document.addEventListener("click", (event) => {
       break;
     case "move":
       overlayTab = "";
-      game.actMove(Number(id));
+      void battleAction(() => game.actMove(Number(id)));
       break;
     case "catch":
-      game.throwBall(id === "great");
+      void battleAction(() => game.throwBall(id === "great"));
       break;
     case "switch":
       overlayTab = "";
-      game.switchPokemon(Number(id));
+      void battleAction(() => game.switchPokemon(Number(id)));
       break;
     case "flee":
-      game.flee();
+      void battleAction(() => game.flee());
       break;
     case "battle-tab":
       overlayTab = id;
@@ -928,6 +1195,13 @@ document.addEventListener("click", (event) => {
       break;
     case "use-item": {
       const item = el.dataset.item as ItemId;
+      if (game.battle) {
+        void battleAction(() => {
+          const ok = game.useItem(item, Number(id));
+          if (!ok) toast("That companion doesn’t need this item right now.");
+        });
+        break;
+      }
       const ok = game.useItem(item, Number(id));
       if (!ok) toast("That companion doesn’t need this item right now.");
       if (game.battle) {
@@ -991,6 +1265,7 @@ document.addEventListener("click", (event) => {
       break;
     case "reset":
       toggleMusic(false);
+      if (renderer.interior) leaveBuilding();
       game.state = newGame();
       path = [];
       pendingEntity = undefined;
@@ -1035,6 +1310,7 @@ document.addEventListener("change", async (e) => {
       document
         .querySelector("#confirm-import")!
         .addEventListener("click", () => {
+          if (renderer.interior) leaveBuilding();
           game.state = state;
           toggleMusic(state.volume);
           path = [];
@@ -1063,6 +1339,10 @@ const movement: Record<string, number[]> = {
 };
 document.addEventListener("keydown", (e) => {
   const target = e.target as HTMLElement;
+  if (battleAnimating) {
+    e.preventDefault();
+    return;
+  }
   if (e.key === "Tab" && overlay) {
     const focusable = [
       ...document.querySelectorAll<HTMLElement>(
@@ -1120,12 +1400,14 @@ document.addEventListener("keydown", (e) => {
   }
   if (movement[key]) {
     path = [];
+    roomPath = [];
+    roomDestination = undefined;
     pendingEntity = undefined;
     renderer.target = null;
     keys.add(key);
     if (!e.repeat) {
       lastStep = performance.now();
-      game.step(...(movement[key] as [number, number]));
+      stepPlayer(...(movement[key] as [number, number]));
       updateLocation();
     }
   }
@@ -1159,6 +1441,13 @@ canvas.addEventListener("click", (e) => {
   if (overlay || game.battle) return;
   canvas.focus({ preventScroll: true });
   const p = renderer.screenToWorld(e.clientX, e.clientY);
+  if (renderer.interior) {
+    const spot = renderer.interior.spots.find(
+      (s) => Math.abs(s.x - p.x) + Math.abs(s.y - p.y) <= 1,
+    );
+    walkRoomTo(spot?.x ?? p.x, spot?.y ?? p.y, spot);
+    return;
+  }
   const entity = entities.find(
     (en) =>
       p.x >= en.x && p.x < en.x + en.w && p.y >= en.y - 1 && p.y < en.y + en.h,
@@ -1174,10 +1463,12 @@ for (const button of document.querySelectorAll<HTMLElement>("[data-dir]")) {
     button.setPointerCapture(e.pointerId);
     path = [];
     pendingEntity = undefined;
+    roomPath = [];
+    roomDestination = undefined;
     keys.add(key);
     if (!overlay && !game.battle) {
       lastStep = performance.now();
-      game.step(dx, dy);
+      stepPlayer(dx, dy);
       updateLocation();
     }
   });
@@ -1189,9 +1480,28 @@ renderer.onFrame = () => {
   const now = performance.now();
   if (now - lastStep < (keys.has("Shift") ? 65 : 125)) return;
   const dir = [...keys].find((k) => movement[k]);
+  if (renderer.interior) {
+    const room = renderer.interior;
+    if (dir) {
+      lastStep = now;
+      stepPlayer(...(movement[dir] as [number, number]));
+    } else if (roomPath.length) {
+      lastStep = now;
+      const next = roomPath.shift()!;
+      stepPlayer(next.x - room.x, next.y - room.y);
+      if (!roomPath.length && roomDestination && renderer.interior) {
+        const spot = roomDestination;
+        roomDestination = undefined;
+        inspectRoom(spot);
+      }
+    }
+    updateLocation();
+    return;
+  }
+  refreshGuide();
   if (dir) {
     lastStep = now;
-    game.step(...(movement[dir] as [number, number]));
+    stepPlayer(...(movement[dir] as [number, number]));
     updateLocation();
   } else if (path.length) {
     lastStep = now;
@@ -1217,6 +1527,7 @@ renderer.onFrame = () => {
   }
 };
 game.on(() => {
+  if (battleAnimating) return;
   renderHud();
   if (game.notice) {
     toast(game.notice);

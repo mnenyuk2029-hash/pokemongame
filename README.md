@@ -12,6 +12,15 @@ Click the current objective at the bottom of the screen to walk to Professor Fer
 
 If you see HTML text instead of the game, right-click `index.html`, select **Open with**, and choose your browser. If you downloaded a ZIP, extract it before opening the game.
 
+## Adventure overhaul
+
+- Four-direction trainer walking, swinging arms and alternating footsteps, an animated following Pokémon, fuller tree canopies, detailed shorelines and storefronts.
+- Gold dots automatically mark a walkable route to your next story task. Click the objective to walk there; movement keys let you take over.
+- Enter all 45 buildings with **E**. Walk around furnished labs, shops, rest houses and homes; talk to residents, use counters and research terminals, or leave through the south door. Indoor positions are temporary; reloading places you safely outside.
+- Collect nine regional field-journal pages inside homes (the first is also in Fern’s lab). Each new page grants a Potion and ₽200. Read your collection under **Journal → Your memories**.
+- Battles have a persistent **Fight / Catch / Pokémon / Bag / Run** bar, move effectiveness hints, sequential attack and healing effects, damage numbers, switching and Poké Ball animations. Actions unlock after each turn finishes. Catching and running are unavailable against trainers.
+- Reduced Motion keeps turn messages and HP changes while disabling spatial combat effects and walking cycles.
+
 ## The adventure
 
 - Nine freely connected regions: Verdant Hollow, Whispering Woods, Amber Coast, Sunstone Mesa, Emberfall, Moonveil Marsh, Frostpeak, Stormhaven, and Aurelian Summit.

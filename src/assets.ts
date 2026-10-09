@@ -10,5 +10,8 @@ const images =
     : {};
 
 export function asset(path: string): string {
-  return images[`../public/${path}`] ?? `/${path}`;
+  return (images[`../public/${path}`] ?? `/${path}`).replace(
+    /^\/public\//,
+    "/",
+  );
 }
